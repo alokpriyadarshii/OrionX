@@ -1,0 +1,18 @@
+{
+  "author": {
+    "name": "Alok Priyadarshi",
+    "email": "alokpriyadarshi618@gmail.com",
+    "url": "https://github.com/alokpriyadarshi618"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alokpriyadarshi618/orionx.git"
+  },
+  "homepage": "https://github.com/alokpriyadarshi618/orionx#readme",
+  "bugs": {
+    "url": "https://github.com/alokpriyadarshi618/orionx/issues"
+  },
+  "devDependencies": {
+    "@antithesishq/bombadil": "^0.6.1"
+  }
+}

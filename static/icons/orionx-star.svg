@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="120 150 970 970" role="img" aria-label="OrionX constellation logo">
+  <defs>
+    <linearGradient id="rose" x1="189" y1="1025" x2="936" y2="211" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d95f78"/>
+      <stop offset="0.54" stop-color="#e37b8e"/>
+      <stop offset="1" stop-color="#f0b5bd"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="50%" cy="50%" r="54%">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="0.55" stop-color="#fff"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft-rose" x="-28%" y="-28%" width="156%" height="156%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.88  0 1 0 0 0.36  0 0 1 0 0.46  0 0 0 .48 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <style>
+      .rose-fill { fill: url(#rose); }
+      .rose-line {
+        fill: none;
+        stroke: url(#rose);
+        stroke-width: 8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        opacity: .74;
+      }
+      .white-core { fill: url(#shine); }
+    </style>
+  </defs>
+
+  <path class="rose-fill" d="M812 258C646 177 457 210 318 350C174 496 157 727 283 887C404 1040 625 1110 819 1006C647 1042 456 987 337 858C212 724 219 534 324 397C432 248 646 201 812 258Z"/>
+  <path class="rose-fill" d="M852 272C974 365 1048 487 1048 626C1048 795 942 942 775 1018C891 934 970 797 982 650C995 506 944 383 852 272Z"/>
+
+  <path class="rose-line" d="M443 469L624 648L841 513L795 779L639 932"/>
+  <path class="rose-line" d="M624 648L643 735L639 932"/>
+
+  <g filter="url(#soft-rose)">
+    <path class="rose-fill" d="M443 349C451 414 481 455 548 469C481 483 451 524 443 589C435 524 405 483 338 469C405 455 435 414 443 349Z"/>
+    <path class="white-core" d="M443 417C447 445 461 464 492 469C461 474 447 493 443 521C439 493 425 474 394 469C425 464 439 445 443 417Z"/>
+
+    <path class="rose-fill" d="M848 197C855 249 881 281 934 291C881 301 855 333 848 385C841 333 815 301 762 291C815 281 841 249 848 197Z"/>
+    <path class="white-core" d="M848 252C851 275 862 287 885 291C862 295 851 307 848 330C845 307 834 295 811 291C834 287 845 275 848 252Z"/>
+
+    <path class="rose-fill" d="M841 466C845 492 858 508 886 513C858 518 845 534 841 560C837 534 824 518 796 513C824 508 837 492 841 466Z"/>
+    <path class="white-core" d="M841 492C843 504 849 511 862 513C849 515 843 522 841 534C839 522 833 515 820 513C833 511 839 504 841 492Z"/>
+
+    <path class="rose-fill" d="M624 613C627 633 637 645 658 648C637 651 627 663 624 683C621 663 611 651 590 648C611 645 621 633 624 613Z"/>
+    <path class="white-core" d="M624 633C626 642 630 647 639 648C630 649 626 654 624 663C622 654 618 649 609 648C618 647 622 642 624 633Z"/>
+
+    <path class="rose-fill" d="M643 706C646 722 654 732 671 735C654 738 646 748 643 764C640 748 632 738 615 735C632 732 640 722 643 706Z"/>
+    <path class="white-core" d="M643 722C644 730 648 734 656 735C648 736 644 740 643 748C642 740 638 736 630 735C638 734 642 730 643 722Z"/>
+
+    <path class="rose-fill" d="M795 702C801 744 822 771 866 779C822 787 801 814 795 856C789 814 768 787 724 779C768 771 789 744 795 702Z"/>
+    <path class="white-core" d="M795 746C798 766 807 776 828 779C807 782 798 792 795 812C792 792 783 782 762 779C783 776 792 766 795 746Z"/>
+
+    <path class="rose-fill" d="M639 858C645 899 666 925 708 932C666 939 645 965 639 1006C633 965 612 939 570 932C612 925 633 899 639 858Z"/>
+    <path class="white-core" d="M639 900C642 920 651 929 671 932C651 935 642 944 639 964C636 944 627 935 607 932C627 929 636 920 639 900Z"/>
+  </g>
+</svg>

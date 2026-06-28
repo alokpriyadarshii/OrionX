@@ -1,0 +1,24 @@
+{
+  "name": "orionx",
+  "version": "0.1.1",
+  "description": "Connect Codex to a scoped OrionX instance.",
+  "author": {
+    "name": "Alok Priyadarshi",
+    "email": "alokpriyadarshi618@gmail.com",
+    "url": "https://github.com/alokpriyadarshi618"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "OrionX",
+    "shortDescription": "Use scoped OrionX tools from Codex.",
+    "longDescription": "Connects Codex terminal sessions to OrionX through user-controlled scoped API tokens. Codex must use /api/codex/* endpoints so OrionX Settings can enforce tool access.",
+    "developerName": "Alok Priyadarshi",
+    "category": "Productivity",
+    "capabilities": [
+      "todos",
+      "email",
+      "scoped-api"
+    ],
+    "defaultPrompt": "Use OrionX only through configured scoped access. Check capabilities before reading or writing data."
+  }
+}
