@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -233,6 +234,43 @@ def _find_endpoint(endpoint_id: str, endpoint_url: str, model: str) -> dict[str,
         if model and model in endpoint.get("models", []):
             return endpoint
     return MODEL_ENDPOINTS[0]
+
+
+def _endpoint_api_key(endpoint: dict[str, object]) -> str:
+    env_key = str(endpoint.get("env_key") or "")
+    if not env_key:
+        return ""
+    return str(os.getenv(env_key) or "")
+
+
+def _session_endpoint(session: dict[str, object] | None, model: str) -> dict[str, object]:
+    if not session:
+        return _find_endpoint("", "", model)
+    return _find_endpoint(
+        str(session.get("endpoint_id") or ""),
+        str(session.get("endpoint_url") or ""),
+        model,
+    )
+
+
+def _sse(data: dict[str, object] | str) -> str:
+    if isinstance(data, str):
+        return f"data: {data}\n\n"
+    return "data: " + json.dumps(data) + "\n\n"
+
+
+def _preview_text(endpoint: dict[str, object], model: str) -> str:
+    if endpoint.get("local_only"):
+        return (
+            f"OrionX selected {model or 'the chosen local model'}. "
+            f"{endpoint.get('name', 'This local model')} runs on your computer, not inside Vercel. "
+            "Run OrionX locally to use Ollama or LM Studio."
+        )
+    env_key = str(endpoint.get("env_key") or "the provider API key")
+    return (
+        f"OrionX selected {model or 'the chosen cloud model'}, but Vercel does not have {env_key} available to this deployment. "
+        f"Add {env_key} in Vercel project Environment Variables and redeploy."
+    )
 
 
 def _session_payload(
@@ -471,6 +509,8 @@ async def chat_stream(request: Request) -> StreamingResponse:
     message = str(payload.get("message") or "").strip()
     session = VERCEL_SESSIONS.get(sid)
     model = str(session.get("model") or "") if session else ""
+    endpoint = _session_endpoint(session, model)
+    api_key = _endpoint_api_key(endpoint)
 
     if sid:
         VERCEL_HISTORY.setdefault(sid, [])
@@ -483,18 +523,79 @@ async def chat_stream(request: Request) -> StreamingResponse:
         session["last_message_at"] = now
         session["updated_at"] = now
 
-    text = (
-        f"OrionX selected {model or 'the chosen model'}. "
-        "This Vercel deployment is a web UI preview, so it can create preview chats and show models, "
-        "but full model execution, tools, memory, Ollama, and LM Studio need the local OrionX backend. "
-        "For cloud models, add the provider API key in Vercel environment variables and connect the full backend."
-    )
-    if sid:
-        VERCEL_HISTORY.setdefault(sid, []).append({"role": "assistant", "content": text, "metadata": {}})
+    history_messages = [
+        {"role": str(item.get("role") or "user"), "content": str(item.get("content") or "")}
+        for item in VERCEL_HISTORY.get(sid, [])[-20:]
+        if item.get("role") in {"system", "user", "assistant"} and item.get("content")
+    ]
 
     async def events():
-        yield "data: " + json.dumps({"delta": text}) + "\n\n"
-        yield "data: [DONE]\n\n"
+        if not api_key or endpoint.get("local_only"):
+            text = _preview_text(endpoint, model)
+            if sid:
+                VERCEL_HISTORY.setdefault(sid, []).append({"role": "assistant", "content": text, "metadata": {}})
+            yield _sse({"delta": text})
+            yield _sse("[DONE]")
+            return
+
+        collected: list[str] = []
+        request_json = {
+            "model": model or list(endpoint.get("models") or ["gpt-4o-mini"])[0],
+            "messages": history_messages or [{"role": "user", "content": message or "Hello"}],
+            "stream": True,
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
+                async with client.stream(
+                    "POST",
+                    str(endpoint["chat_url"]),
+                    headers=headers,
+                    json=request_json,
+                ) as response:
+                    if response.status_code >= 400:
+                        err = await response.aread()
+                        text = err.decode("utf-8", errors="replace")[:500]
+                        yield _sse(
+                            {
+                                "status": response.status_code,
+                                "text": f"{endpoint.get('name', 'Provider')} returned HTTP {response.status_code}: {text}",
+                            }
+                        )
+                        yield _sse("[DONE]")
+                        return
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if not data:
+                            continue
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+                        for choice in chunk.get("choices", []):
+                            delta = choice.get("delta") or {}
+                            content = delta.get("content") or choice.get("message", {}).get("content")
+                            if content:
+                                collected.append(str(content))
+                                yield _sse({"delta": content})
+        except httpx.TimeoutException:
+            yield _sse({"status": 504, "text": f"{endpoint.get('name', 'Provider')} timed out."})
+        except httpx.HTTPError as exc:
+            yield _sse({"status": 502, "text": f"{endpoint.get('name', 'Provider')} request failed: {exc}"})
+        else:
+            assistant_text = "".join(collected).strip()
+            if sid and assistant_text:
+                VERCEL_HISTORY.setdefault(sid, []).append(
+                    {"role": "assistant", "content": assistant_text, "metadata": {}}
+                )
+        yield _sse("[DONE]")
 
     return StreamingResponse(
         events(),
