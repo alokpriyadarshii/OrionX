@@ -85,7 +85,7 @@ function _modelExists(modelId, url) {
   if (!items.length) return true;
   const targetUrl = (url || '').replace(/\/+$/, '');
   return items.some(item => {
-    if (item.offline) return false;
+    if (item.offline && !item.selectable) return false;
     const itemUrl = (item.url || '').replace(/\/+$/, '');
     const models = (item.models || []).concat(item.models_extra || []);
     return models.includes(modelId) && (!targetUrl || itemUrl === targetUrl);
@@ -117,7 +117,7 @@ async function _ensureDefaultPendingChat() {
     // No configured default: preserve the old convenience fallback.
     if (window.modelsModule && window.modelsModule.getCachedItems) {
       const items = window.modelsModule.getCachedItems();
-      const first = items.find(item => !item.offline && ((item.models || []).length || (item.models_extra || []).length));
+      const first = items.find(item => (!item.offline || item.selectable) && ((item.models || []).length || (item.models_extra || []).length));
       if (first) {
         const models = (first.models || []).concat(first.models_extra || []);
         _deps.setPendingChat({ url: first.url, modelId: models[0], endpointId: first.endpoint_id });
@@ -225,7 +225,7 @@ function _initModelPickerDropdown() {
       // `stale: true` so the row renderer dims them + shows the offline
       // pill. The user can still click and try anyway (matches the
       // existing "local server appears offline" path on line 301).
-      const epOffline = !!item.offline;
+      const epOffline = !!item.offline && !item.selectable;
       const allModels = (item.models || []).concat(item.models_extra || []);
       const allDisplay = (item.models_display || []).concat(item.models_extra_display || []);
       // Mark local endpoints whose live probe failed.
@@ -588,7 +588,7 @@ function _initModelPickerDropdown() {
     const targetModel = detail.modelId || '';
     let match = null;
     for (const item of items) {
-      if (item.offline) continue;
+      if (item.offline && !item.selectable) continue;
       if (targetEndpointId && String(item.endpoint_id || '') !== targetEndpointId) continue;
       const models = (item.models || []).concat(item.models_extra || []);
       const displays = (item.models_display || []).concat(item.models_extra_display || []);
@@ -735,12 +735,12 @@ export function updateModelPicker() {
     const items = window.modelsModule.getCachedItems();
     const allAvailable = [];
     items.forEach(item => {
-      if (item.offline) return;
+      if (item.offline && !item.selectable) return;
       (item.models || []).concat(item.models_extra || []).forEach(m => allAvailable.push(m));
     });
     if (allAvailable.length > 0 && !allAvailable.includes(modelId)) {
       // Model no longer available — switch to first available
-      const fallback = items.find(item => !item.offline && (item.models || []).length > 0);
+      const fallback = items.find(item => (!item.offline || item.selectable) && (item.models || []).length > 0);
       if (fallback) {
         modelId = fallback.models[0];
         _deps.setPendingChat({ url: fallback.url, modelId, endpointId: fallback.endpoint_id });

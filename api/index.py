@@ -22,6 +22,7 @@ MODEL_ENDPOINTS = [
         "env_key": "OPENAI_API_KEY",
         "category": "api",
         "endpoint_kind": "openai-compatible",
+        "preview_selectable": True,
         "models": [
             "gpt-4o-mini",
             "gpt-4.1-mini",
@@ -36,6 +37,7 @@ MODEL_ENDPOINTS = [
         "env_key": "DEEPSEEK_API_KEY",
         "category": "api",
         "endpoint_kind": "openai-compatible",
+        "preview_selectable": True,
         "models": [
             "deepseek-chat",
             "deepseek-reasoner",
@@ -49,6 +51,7 @@ MODEL_ENDPOINTS = [
         "env_key": "",
         "category": "local",
         "endpoint_kind": "ollama",
+        "preview_selectable": True,
         "models": [
             "llama3.1",
             "qwen2.5",
@@ -64,6 +67,7 @@ MODEL_ENDPOINTS = [
         "env_key": "",
         "category": "local",
         "endpoint_kind": "lm-studio",
+        "preview_selectable": True,
         "models": [
             "local-model",
         ],
@@ -189,6 +193,7 @@ def _endpoint_enabled(endpoint: dict[str, object]) -> bool:
 def _model_item(endpoint: dict[str, object]) -> dict[str, object]:
     models = list(endpoint["models"])
     enabled = _endpoint_enabled(endpoint)
+    selectable = bool(endpoint.get("preview_selectable"))
     return {
         "host": "vercel",
         "port": 0,
@@ -202,7 +207,10 @@ def _model_item(endpoint: dict[str, object]) -> dict[str, object]:
         "category": endpoint["category"],
         "endpoint_kind": endpoint["endpoint_kind"],
         "model_type": "llm",
-        "offline": not enabled,
+        "offline": bool(not enabled and not selectable),
+        "selectable": selectable,
+        "configured": enabled,
+        "configuration_required": not enabled,
     }
 
 
@@ -212,6 +220,22 @@ async def models() -> dict[str, object]:
         "hosts": [],
         "items": [_model_item(endpoint) for endpoint in MODEL_ENDPOINTS],
     }
+
+
+@app.get("/api/default-chat")
+async def default_chat() -> dict[str, object]:
+    for endpoint in MODEL_ENDPOINTS:
+        models = list(endpoint.get("models") or [])
+        if models:
+            return {
+                "endpoint_url": endpoint["chat_url"],
+                "endpoint_id": endpoint["id"],
+                "endpoint_name": endpoint["name"],
+                "model": models[0],
+                "configured": _endpoint_enabled(endpoint),
+                "configuration_required": not _endpoint_enabled(endpoint),
+            }
+    return {"endpoint_url": "", "endpoint_id": "", "model": ""}
 
 
 @app.get("/api/model-endpoints")
