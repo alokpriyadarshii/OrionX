@@ -1,6 +1,6 @@
 # OrionX
 
-OrionX is a self hosted AI workspace for local and OpenAI-compatible models. It combines a FastAPI backend, a browser/PWA frontend, persistent memory, document/RAG workflows, research, email, calendar, notes, image/gallery tools, scheduled tasks, MCP tools, and local model management in one application.
+OrionX is a self hosted AI workspace for local and OpenAI compatible models. It combines a FastAPI backend, a browser/PWA frontend, persistent memory, document/RAG workflows, research, email, calendar, notes, image/gallery tools, scheduled tasks, MCP tools, and local model management in one application.
 
 The app is designed for local first use: run it natively on macOS/Windows/Linux or through Docker Compose, connect it to Ollama, LM Studio, OpenAI compatible endpoints, SearXNG, ChromaDB, IMAP/SMTP, CalDAV/CardDAV, and MCP servers, then access the UI from your browser.
 
