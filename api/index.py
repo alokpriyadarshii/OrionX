@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import secrets
 import os
+import json
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 
@@ -86,6 +89,9 @@ ADMIN_PRIVILEGES = {
     "allowed_models_restricted": False,
     "block_all_models": False,
 }
+
+VERCEL_SESSIONS: dict[str, dict[str, object]] = {}
+VERCEL_HISTORY: dict[str, list[dict[str, object]]] = {}
 
 app = FastAPI(
     title="OrionX",
@@ -214,6 +220,55 @@ def _model_item(endpoint: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _find_endpoint(endpoint_id: str, endpoint_url: str, model: str) -> dict[str, object]:
+    for endpoint in MODEL_ENDPOINTS:
+        if endpoint_id and endpoint.get("id") == endpoint_id:
+            return endpoint
+        if endpoint_url and endpoint.get("chat_url") == endpoint_url:
+            return endpoint
+        if model and model in endpoint.get("models", []):
+            return endpoint
+    return MODEL_ENDPOINTS[0]
+
+
+def _session_payload(
+    *,
+    sid: str,
+    name: str,
+    endpoint_url: str,
+    endpoint_id: str,
+    model: str,
+    archived: bool = False,
+) -> dict[str, object]:
+    now = _now_iso()
+    endpoint = _find_endpoint(endpoint_id, endpoint_url, model)
+    return {
+        "id": sid,
+        "name": name or f"{model or 'OrionX'} Chat",
+        "title": name or f"{model or 'OrionX'} Chat",
+        "model": model,
+        "endpoint_url": endpoint_url,
+        "endpoint_id": endpoint_id or str(endpoint.get("id") or ""),
+        "endpoint_name": str(endpoint.get("name") or "OrionX"),
+        "rag": False,
+        "archived": archived,
+        "folder": "",
+        "created_at": now,
+        "updated_at": now,
+        "last_message_at": now,
+        "message_count": 0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "is_important": False,
+        "mode": "chat",
+        "preview_only": True,
+    }
+
+
 @app.get("/api/models")
 async def models() -> dict[str, object]:
     return {
@@ -275,6 +330,177 @@ async def probe_local_model_endpoints() -> dict[str, object]:
         "endpoints": [],
         "message": "Local Ollama and LM Studio endpoints are available only when OrionX runs on the same machine as those servers.",
     }
+
+
+@app.get("/api/sessions")
+async def list_sessions() -> list[dict[str, object]]:
+    return sorted(
+        (session for session in VERCEL_SESSIONS.values() if not session.get("archived")),
+        key=lambda session: str(session.get("updated_at") or ""),
+        reverse=True,
+    )
+
+
+@app.get("/api/sessions/archived")
+async def list_archived_sessions() -> dict[str, object]:
+    items = sorted(
+        (session for session in VERCEL_SESSIONS.values() if session.get("archived")),
+        key=lambda session: str(session.get("updated_at") or ""),
+        reverse=True,
+    )
+    return {"items": items, "total": len(items)}
+
+
+@app.post("/api/session")
+async def create_session(request: Request) -> dict[str, object]:
+    try:
+        form = await request.form()
+        payload = dict(form)
+    except Exception:
+        payload = await request.json()
+
+    default = await default_chat()
+    endpoint_url = str(payload.get("endpoint_url") or default.get("endpoint_url") or "")
+    endpoint_id = str(payload.get("endpoint_id") or default.get("endpoint_id") or "")
+    model = str(payload.get("model") or default.get("model") or "")
+    name = str(payload.get("name") or payload.get("title") or f"{model or 'OrionX'} Chat")
+    sid = str(uuid.uuid4())
+    session = _session_payload(
+        sid=sid,
+        name=name,
+        endpoint_url=endpoint_url,
+        endpoint_id=endpoint_id,
+        model=model,
+    )
+    VERCEL_SESSIONS[sid] = session
+    VERCEL_HISTORY[sid] = []
+    return session
+
+
+@app.patch("/api/session/{sid}")
+async def update_session(sid: str, request: Request):
+    session = VERCEL_SESSIONS.get(sid)
+    if not session:
+        return JSONResponse({"detail": "Session not found"}, status_code=404)
+
+    try:
+        form = await request.form()
+        payload = dict(form)
+    except Exception:
+        payload = await request.json()
+
+    for key in ("name", "title", "model", "endpoint_url", "endpoint_id", "folder"):
+        value = payload.get(key)
+        if value is not None:
+            session[key] = str(value)
+    if "title" in payload and "name" not in payload:
+        session["name"] = str(payload["title"])
+    if "name" in payload and "title" not in payload:
+        session["title"] = str(payload["name"])
+    session["updated_at"] = _now_iso()
+    return session
+
+
+@app.delete("/api/session/{sid}")
+async def delete_session(sid: str) -> dict[str, bool]:
+    VERCEL_SESSIONS.pop(sid, None)
+    VERCEL_HISTORY.pop(sid, None)
+    return {"ok": True}
+
+
+@app.post("/api/session/{sid}/archive")
+async def archive_session(sid: str):
+    session = VERCEL_SESSIONS.get(sid)
+    if not session:
+        return JSONResponse({"detail": "Session not found"}, status_code=404)
+    session["archived"] = True
+    session["updated_at"] = _now_iso()
+    return session
+
+
+@app.post("/api/session/{sid}/unarchive")
+@app.post("/api/session/{sid}/restore")
+async def restore_session(sid: str):
+    session = VERCEL_SESSIONS.get(sid)
+    if not session:
+        return JSONResponse({"detail": "Session not found"}, status_code=404)
+    session["archived"] = False
+    session["updated_at"] = _now_iso()
+    return session
+
+
+@app.post("/api/session/{sid}/important")
+async def mark_session_important(sid: str, request: Request):
+    session = VERCEL_SESSIONS.get(sid)
+    if not session:
+        return JSONResponse({"detail": "Session not found"}, status_code=404)
+    try:
+        form = await request.form()
+        raw = str(form.get("important", "true")).lower()
+    except Exception:
+        raw = "true"
+    session["is_important"] = raw not in {"0", "false", "no", "off"}
+    session["updated_at"] = _now_iso()
+    return session
+
+
+@app.get("/api/history/{sid}")
+async def history(sid: str) -> dict[str, object]:
+    session = VERCEL_SESSIONS.get(sid, {})
+    return {
+        "history": VERCEL_HISTORY.get(sid, []),
+        "model": session.get("model"),
+        "session": session,
+    }
+
+
+@app.get("/api/chat/stream_status/{sid}")
+async def chat_stream_status(sid: str) -> dict[str, str]:
+    return {"status": "idle", "session": sid}
+
+
+@app.post("/api/chat_stream")
+async def chat_stream(request: Request) -> StreamingResponse:
+    try:
+        form = await request.form()
+        payload = dict(form)
+    except Exception:
+        payload = {}
+
+    sid = str(payload.get("session") or payload.get("session_id") or "")
+    message = str(payload.get("message") or "").strip()
+    session = VERCEL_SESSIONS.get(sid)
+    model = str(session.get("model") or "") if session else ""
+
+    if sid:
+        VERCEL_HISTORY.setdefault(sid, [])
+        if message:
+            VERCEL_HISTORY[sid].append({"role": "user", "content": message, "metadata": {}})
+
+    if session:
+        now = _now_iso()
+        session["message_count"] = int(session.get("message_count") or 0) + (1 if message else 0)
+        session["last_message_at"] = now
+        session["updated_at"] = now
+
+    text = (
+        f"OrionX selected {model or 'the chosen model'}. "
+        "This Vercel deployment is a web UI preview, so it can create preview chats and show models, "
+        "but full model execution, tools, memory, Ollama, and LM Studio need the local OrionX backend. "
+        "For cloud models, add the provider API key in Vercel environment variables and connect the full backend."
+    )
+    if sid:
+        VERCEL_HISTORY.setdefault(sid, []).append({"role": "assistant", "content": text, "metadata": {}})
+
+    async def events():
+        yield "data: " + json.dumps({"delta": text}) + "\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
